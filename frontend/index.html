@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Donation Sender</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-container">
+    <header class="app-header">
+      <h1>Send Donation Message</h1>
+      <p>Select family, choose an image, and send message</p>
+      <p class="hint">Please enter details in Hindi</p>
+    </header>
+
+    <section class="card">
+      <label for="familySelect">1) Select Family</label>
+      <select id="familySelect" class="input-lg">
+        <option value="">Select family...</option>
+      </select>
+    </section>
+
+    <section class="card">
+      <h2>2) Select Image</h2>
+      <p class="hint">Click one image to select</p>
+      <div id="imageGrid" class="image-grid"></div>
+    </section>
+
+    <section class="card">
+      <h2>3) Donor Details</h2>
+      <form id="messageForm">
+        <div class="form-grid">
+          <label>
+            Post Type
+            <select id="postType" class="input-lg">
+              <option value="General Donation">General Donation</option>
+              <option value="Punyatithi">Punyatithi</option>
+              <option value="Birthday">Birthday</option>
+              <option value="Anniversary">Anniversary</option>
+              <option value="Multiple Donors">Multiple Donors</option>
+              <option value="Festival / Occasion">Festival / Occasion</option>
+            </select>
+          </label>
+
+          <label>
+            Donation Type
+            <select id="donationType" class="input-lg" required>
+              <option value="">Select donation type...</option>
+              <option value="एक समय का चारा">एक समय का चारा</option>
+              <option value="पूरे दिन का चारा">पूरे दिन का चारा</option>
+              <option value="2 दिन का चारा">2 दिन का चारा</option>
+            </select>
+          </label>
+
+          <label id="occasionTypeGroup">
+            Occasion Type
+            <input type="text" id="occasionTypeText" class="input-lg" placeholder="e.g., गुड़ी पड़वा, दीपावली">
+          </label>
+
+          <label id="inTheNameGroup">
+            In the name of (e.g., whose birthday / punyatithi)
+            <input type="text" id="inTheName" class="input-lg" placeholder="Example: स्व. माताजी ___ जी">
+          </label>
+
+          <label id="countGroup">
+            Count (optional)
+            <input type="text" id="countText" class="input-lg" placeholder="e.g., 5वीं पुण्यतिथि">
+          </label>
+
+          <label id="donorModeGroup">
+            Donor Mode
+            <select id="donorMode" class="input-lg">
+              <option value="single">Single Donor</option>
+              <option value="multiple">Multiple Donors</option>
+            </select>
+          </label>
+
+          <label id="donorSingleGroup">
+            Donor Name
+            <input type="text" id="donorName" class="input-lg" placeholder="Enter donor name (in Hindi)" required>
+          </label>
+
+          <div id="donorMultipleGroup" style="display: none;">
+            <label>
+              Donor 1
+              <input type="text" id="donor1" class="input-lg" placeholder="Enter donor 1 name (in Hindi)">
+            </label>
+
+            <label>
+              Donor 2
+              <input type="text" id="donor2" class="input-lg" placeholder="Enter donor 2 name (in Hindi)">
+            </label>
+
+            <label>
+              Donor 3
+              <input type="text" id="donor3" class="input-lg" placeholder="Enter donor 3 name (in Hindi)">
+            </label>
+          </div>
+
+          <div id="anniversaryGroup" style="display: none;">
+            <label>
+              Husband Name
+              <input type="text" id="husbandName" class="input-lg" placeholder="Enter husband name (in Hindi)">
+            </label>
+
+            <label>
+              Wife Name
+              <input type="text" id="wifeName" class="input-lg" placeholder="Enter wife name (in Hindi)">
+            </label>
+          </div>
+
+          <label>
+            Family Name
+            <input type="text" id="familyName" class="input-lg" placeholder="Enter family name (in Hindi)" required>
+          </label>
+
+          <label>
+            Location
+            <input type="text" id="location" class="input-lg" placeholder="Enter location (in Hindi)">
+          </label>
+
+          <label>
+            Custom Message
+            <textarea id="customMessage" class="input-lg" rows="4" placeholder="Enter custom message (in Hindi)"></textarea>
+          </label>
+        </div>
+
+        <button type="submit" id="submitBtn" class="btn-primary">Send to WhatsApp</button>
+      </form>
+    </section>
+
+    <section id="status" class="status" aria-live="polite"></section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
