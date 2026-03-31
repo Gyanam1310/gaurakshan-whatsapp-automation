@@ -2,8 +2,8 @@ const { saveToSheet } = require("../utils/sheetService");
 const fs = require("fs/promises");
 const axios = require("axios");
 const { uploadImageToDrive } = require("../utils/driveUploadService");
+const { connectWhatsApp, getSocket } = require("../config/whatsapp");
 const {
-  initializeWhatsApp,
   isWhatsAppConnected,
   getWhatsAppState,
   sendMessageToWhatsApp,
@@ -185,12 +185,14 @@ async function executeSendMessage({ payload, incomingBody, logPrefix }) {
     }
   }
 
-  if (!isWhatsAppConnected()) {
+  let socket = getSocket();
+  if (!socket || !isWhatsAppConnected()) {
     console.warn(logPrefix, "WhatsApp is disconnected; attempting initialization");
-    await initializeWhatsApp();
+    await connectWhatsApp();
+    socket = getSocket();
   }
 
-  if (!isWhatsAppConnected()) {
+  if (!socket || !isWhatsAppConnected()) {
     const unavailableError = new Error("WhatsApp session is not connected");
     unavailableError.statusCode = 503;
     unavailableError.code = "WHATSAPP_NOT_CONNECTED";

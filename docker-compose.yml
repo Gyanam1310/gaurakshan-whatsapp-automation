@@ -4,7 +4,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: whatsapp-backend
-    restart: unless-stopped
+    restart: always
     environment:
       PORT: 5000
       NODE_ENV: production
@@ -16,6 +16,13 @@ services:
       LOG_DIR: /app/logs
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-30000}
+      WHATSAPP_CONNECT_TIMEOUT_MS: ${WHATSAPP_CONNECT_TIMEOUT_MS:-45000}
+      WHATSAPP_MAX_RECONNECT_ATTEMPTS: ${WHATSAPP_MAX_RECONNECT_ATTEMPTS:-12}
+      WHATSAPP_RECONNECT_BASE_DELAY_MS: ${WHATSAPP_RECONNECT_BASE_DELAY_MS:-2000}
+      WHATSAPP_RECONNECT_MAX_DELAY_MS: ${WHATSAPP_RECONNECT_MAX_DELAY_MS:-60000}
+      WHATSAPP_SEND_TIMEOUT_MS: ${WHATSAPP_SEND_TIMEOUT_MS:-25000}
+      WHATSAPP_SEND_RETRY_ATTEMPTS: ${WHATSAPP_SEND_RETRY_ATTEMPTS:-2}
+      WHATSAPP_SEND_RETRY_BASE_DELAY_MS: ${WHATSAPP_SEND_RETRY_BASE_DELAY_MS:-1500}
     volumes:
       - backend-session:/app/session
       - backend-uploads:/app/tmp-uploads
@@ -29,23 +36,27 @@ services:
       timeout: 10s
       retries: 5
       start_period: 25s
+    networks:
+      - app-network
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: whatsapp-frontend
-    restart: unless-stopped
+    restart: always
     depends_on:
       backend:
         condition: service_healthy
     ports:
       - "8080:80"
+    networks:
+      - app-network
 
   n8n:
     image: n8nio/n8n:1.111.0
     container_name: whatsapp-n8n
-    restart: unless-stopped
+    restart: always
     environment:
       N8N_HOST: ${N8N_HOST:-localhost}
       N8N_PORT: 5678
@@ -53,6 +64,9 @@ services:
       N8N_EDITOR_BASE_URL: ${N8N_EDITOR_BASE_URL:-http://localhost:5678}
       WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678}
       GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Asia/Kolkata}
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-strongpassword}
       BACKEND_BASE_URL: http://backend:5000
     volumes:
       - n8n-data:/home/node/.n8n
@@ -62,9 +76,15 @@ services:
         condition: service_healthy
     ports:
       - "5678:5678"
+    networks:
+      - app-network
 
 volumes:
   backend-session:
   backend-uploads:
   backend-logs:
   n8n-data:
+
+networks:
+  app-network:
+    driver: bridge
