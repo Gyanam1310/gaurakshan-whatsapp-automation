@@ -68,7 +68,25 @@ body {
   border-radius: 10px;
   padding: 12px 14px;
   font-size: 1.05rem;
+  color: #000;
+  background-color: #fff;
+  opacity: 1;
+  visibility: visible;
   margin-top: 6px;
+}
+
+#familySelect,
+#familySelect option {
+  color: #000 !important;
+  background-color: #fff !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  font-size: 16px !important;
+}
+
+#familySelect {
+  position: relative;
+  z-index: 2;
 }
 
 .input-lg:focus {
@@ -86,18 +104,113 @@ body {
   grid-column: 1 / -1;
 }
 
+.donors-section {
+  grid-column: 1 / -1;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fcfaf4;
+}
+
+.donors-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.donors-header-row h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.donors-container {
+  display: grid;
+  gap: 10px;
+}
+
+.donor-item {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr auto;
+  gap: 8px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.donor-item.removing {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.donor-item label {
+  margin: 0;
+}
+
+.donor-item .input-lg {
+  margin-top: 4px;
+}
+
+.btn-secondary {
+  border: 1px solid var(--primary);
+  background: #fff;
+  color: var(--primary-dark);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: #ecf7f2;
+}
+
+.preview-box {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fffef9;
+  padding: 12px;
+}
+
+.preview-box h3 {
+  margin: 0 0 8px;
+}
+
+.upload-row {
+  display: block;
+  margin-top: 12px;
+}
+
+#messagePreview {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  font-family: "Noto Sans Devanagari", sans-serif;
+  color: #1f3a2f;
+}
+
 .image-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
+  opacity: 1;
+  visibility: visible;
 }
 
 .image-item {
+  display: block;
   border: 3px solid transparent;
   border-radius: 12px;
   overflow: hidden;
   background: #f1eee8;
   cursor: pointer;
+  opacity: 1;
+  visibility: visible;
   transition: transform 0.15s ease, border-color 0.15s ease;
 }
 
@@ -112,8 +225,11 @@ body {
 .image-item img {
   width: 100%;
   height: 120px;
+  min-height: 120px;
   object-fit: cover;
   display: block;
+  opacity: 1;
+  visibility: visible;
 }
 
 .image-name {
@@ -161,6 +277,10 @@ body {
 
 @media (max-width: 720px) {
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .donor-item {
     grid-template-columns: 1fr;
   }
 

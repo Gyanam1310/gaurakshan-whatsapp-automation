@@ -1,14 +1,17 @@
-require("dotenv").config();
 const express = require("express");
+const cors = require("cors");
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+require("dotenv").config();
 const path = require("path");
 
 const messageRoutes = require("./routes/messageRoutes");
-const imageRoutes = require("./routes/imageRoutes");
+const imageRoutes = require("./routes/imageRoutes"); 
 const { initializeWhatsApp } = require("./services/whatsappService");
 
-const app = express();
-
-app.use(express.json());
 app.use(express.static(path.join(__dirname, "..", "frontend")));
 
 app.get("/", (req, res) => {
@@ -18,11 +21,15 @@ app.get("/", (req, res) => {
 app.use(messageRoutes);
 app.use(imageRoutes);
 
-const PORT = process.env.PORT || 3000;
+initializeWhatsApp()
+  .then(() => {
+    console.log("[startup] WhatsApp initialization requested");
+  })
+  .catch((error) => {
+    console.error("[startup] WhatsApp initialization failed:", error.message);
+  });
 
-initializeWhatsApp().catch((err) => {
-  console.error("❌ WhatsApp Connection Failed:", err);
-});
+const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
