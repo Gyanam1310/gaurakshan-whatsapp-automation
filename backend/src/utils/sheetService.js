@@ -1,4 +1,7 @@
 const { google } = require("googleapis");
+const { logger } = require("../config/logger");
+
+const sheetsLogger = logger.child({ component: "sheet-service" });
 
 const ALLOWED_STATUSES = new Set(["pending", "sent", "failed"]);
 
@@ -82,12 +85,12 @@ async function saveToSheet(data) {
   const sheetName = "Sheet1";
 
   if (!spreadsheetId) {
-    console.warn("⚠️ SPREADSHEET_ID is missing. Skipping Google Sheet save.");
+    sheetsLogger.warn("sheet_save_skipped_missing_spreadsheet_id");
     return { skipped: true };
   }
 
   if (!keyFile) {
-    console.warn("⚠️ GOOGLE_SERVICE_ACCOUNT_KEY is missing. Skipping Google Sheet save.");
+    sheetsLogger.warn("sheet_save_skipped_missing_service_account_key");
     return { skipped: true };
   }
 
@@ -106,7 +109,9 @@ async function saveToSheet(data) {
       sheetName,
     });
 
-    console.log("[sheets] prepared payload:", sheetData);
+    sheetsLogger.info("sheet_payload_prepared", {
+      sheetData,
+    });
 
     const values = [[
       sheetData.id,
@@ -125,7 +130,9 @@ async function saveToSheet(data) {
       requestBody: { values },
     });
 
-    console.log("✅ Saved to Google Sheet");
+    sheetsLogger.info("sheet_save_success", {
+      id: sheetData.id,
+    });
     return {
       saved: true,
       sheetData,
@@ -133,7 +140,9 @@ async function saveToSheet(data) {
     };
   } catch (error) {
     const details = error.response?.data?.error || error.message;
-    console.error("❌ Failed to save to Google Sheet:", details);
+    sheetsLogger.error("sheet_save_failed", {
+      details,
+    });
     throw error;
   }
 }

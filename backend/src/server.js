@@ -2,12 +2,11 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const fs = require("fs");
-const path = require("path");
 
 const messageRoutes = require("./routes/messageRoutes");
 const imageRoutes = require("./routes/imageRoutes");
 const { initializeWhatsApp, getWhatsAppState } = require("./services/whatsappService");
+const { logger, accessLogger } = require("./config/logger");
 
 const app = express();
 const PORT = Number.parseInt(process.env.PORT, 10) || 5000;
@@ -17,16 +16,6 @@ const allowedOrigins = (process.env.CORS_ORIGINS || "*")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
-
-const logDir = process.env.LOG_DIR || path.join(process.cwd(), "logs");
-fs.mkdirSync(logDir, { recursive: true });
-const accessLogFile = path.join(logDir, "access.log");
-
-function appendAccessLog(entry) {
-  fs.appendFile(accessLogFile, JSON.stringify(entry) + "\n", () => {
-    // Intentionally ignore file write errors to avoid blocking requests.
-  });
-}
 
 app.disable("x-powered-by");
 app.use(cors({ origin: allowedOrigins.length === 1 && allowedOrigins[0] === "*" ? "*" : allowedOrigins }));
@@ -46,13 +35,14 @@ app.use((req, res, next) => {
   });
 
   res.on("finish", () => {
-    appendAccessLog({
+    accessLogger.info("http_request", {
       timestamp: new Date().toISOString(),
       method: req.method,
       path: req.originalUrl,
       statusCode: res.statusCode,
       durationMs: Date.now() - startedAt,
       ip: req.ip,
+      userAgent: req.get("user-agent") || null,
     });
   });
 
@@ -83,10 +73,12 @@ app.use((error, req, res, next) => {
   const statusCode = error.statusCode || 500;
   const message = error.message || "Internal server error";
 
-  console.error("[backend][error]", {
+  logger.error("request_failed", {
     message,
     statusCode,
     path: req.originalUrl,
+    method: req.method,
+    details: error.details || null,
   });
 
   return res.status(statusCode).json({
@@ -97,7 +89,10 @@ app.use((error, req, res, next) => {
 });
 
 const server = app.listen(PORT, () => {
-  console.log(`[backend] server listening on port ${PORT}`);
+  logger.info("server_started", {
+    port: PORT,
+    requestTimeoutMs: REQUEST_TIMEOUT_MS,
+  });
 });
 
 server.headersTimeout = REQUEST_TIMEOUT_MS + 1000;
@@ -105,18 +100,26 @@ server.requestTimeout = REQUEST_TIMEOUT_MS;
 
 initializeWhatsApp()
   .then(() => {
-    console.log("[startup] WhatsApp initialization requested");
+    logger.info("whatsapp_initialization_requested");
   })
   .catch((error) => {
-    console.error("[startup] WhatsApp initialization failed:", error.message);
+    logger.error("whatsapp_initialization_failed", {
+      message: error.message,
+      code: error.code || null,
+    });
   });
 
 process.on("unhandledRejection", (reason) => {
-  console.error("[process] unhandledRejection", reason);
+  logger.error("process_unhandled_rejection", {
+    reason,
+  });
 });
 
 process.on("uncaughtException", (error) => {
-  console.error("[process] uncaughtException", error);
+  logger.error("process_uncaught_exception", {
+    message: error.message,
+    stack: error.stack || null,
+  });
 });
 
 module.exports = app;

@@ -8,6 +8,9 @@ const {
   getWhatsAppState,
   sendMessageToWhatsApp,
 } = require("../services/whatsappService");
+const { logger } = require("../config/logger");
+
+const messageLogger = logger.child({ component: "message-controller" });
 
 const sentMessageCache = new Map();
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -90,7 +93,10 @@ async function cleanupUploadedFile(file) {
     await fs.unlink(file.path);
   } catch (error) {
     if (error.code !== "ENOENT") {
-      console.warn("⚠️ Failed to cleanup uploaded file:", error.message);
+      messageLogger.warn("uploaded_file_cleanup_failed", {
+        message: error.message,
+        filePath: file.path,
+      });
     }
   }
 }
@@ -166,7 +172,10 @@ async function executeSendMessage({ payload, incomingBody, logPrefix }) {
 
     if (cachedEntry) {
       if (cachedEntry.signature === signature) {
-        console.warn(logPrefix, "Duplicate id detected; returning cached success response");
+        messageLogger.warn("duplicate_idempotency_key", {
+          logPrefix,
+          idempotencyKey,
+        });
         return {
           duplicate: true,
           skipped: true,
@@ -187,7 +196,9 @@ async function executeSendMessage({ payload, incomingBody, logPrefix }) {
 
   let socket = getSocket();
   if (!socket || !isWhatsAppConnected()) {
-    console.warn(logPrefix, "WhatsApp is disconnected; attempting initialization");
+    messageLogger.warn("whatsapp_disconnected_attempt_init", {
+      logPrefix,
+    });
     await connectWhatsApp();
     socket = getSocket();
   }
@@ -202,7 +213,8 @@ async function executeSendMessage({ payload, incomingBody, logPrefix }) {
 
   await assertImageUrlAccessible(payload.imageUrl);
 
-  console.log(logPrefix, "WhatsApp send attempt", {
+  messageLogger.info("whatsapp_send_attempt", {
+    logPrefix,
     id: payload.id,
     groupId: payload.groupId,
     donationDate: payload.donationDate,
@@ -226,7 +238,8 @@ async function executeSendMessage({ payload, incomingBody, logPrefix }) {
     });
   }
 
-  console.log(logPrefix, "WhatsApp send success", {
+  messageLogger.info("whatsapp_send_success", {
+    logPrefix,
     messageId: sendResult.messageId || null,
     groupId: sendResult.groupId,
   });
@@ -244,9 +257,10 @@ async function executeSendMessage({ payload, incomingBody, logPrefix }) {
 
 async function saveDonation(req, res) {
   try {
-    console.log("==== INCOMING SAVE REQUEST ====");
-    console.log("BODY:", req.body);
-    console.log("FILE:", req.file);
+    messageLogger.info("save_donation_request", {
+      hasFile: Boolean(req.file),
+      bodyKeys: Object.keys(req.body || {}),
+    });
 
     const id = readOptionalId(req.body?.id);
     const donationDate = readTextField(req.body?.donationDate);
@@ -261,7 +275,9 @@ async function saveDonation(req, res) {
       try {
         imageUrl = await uploadImageToDrive(req.file);
       } catch (uploadError) {
-        console.error("⚠️ Google Drive upload failed:", uploadError.message);
+        messageLogger.error("drive_upload_failed", {
+          message: uploadError.message,
+        });
         imageUrl = "";
       }
     }
@@ -280,7 +296,10 @@ async function saveDonation(req, res) {
       data: sheetResult?.sheetData || null,
     });
   } catch (error) {
-    console.error("🔥 SAVE ERROR:", error);
+    messageLogger.error("save_donation_failed", {
+      message: error.message,
+      stack: error.stack || null,
+    });
     return res.status(error.statusCode || 500).json({
       success: false,
       error: error.message || "Failed to save donation",
@@ -300,8 +319,12 @@ async function sendMessage(req, res) {
   const imageUrl = readTextField(incomingBody.imageUrl);
   const donationDate = readTextField(incomingBody.donationDate);
 
-  console.log("Incoming body:", incomingBody);
-  console.log("Parsed message:", message);
+  messageLogger.info("send_message_request", {
+    id,
+    groupId,
+    hasImageUrl: Boolean(imageUrl),
+    messageLength: message.length,
+  });
 
   const validationErrors = [];
 
@@ -348,7 +371,8 @@ async function sendMessage(req, res) {
           throw error;
         }
 
-        console.warn(logPrefix, "Image send failed; retrying text-only", {
+        messageLogger.warn("image_send_failed_retry_text_only", {
+          logPrefix,
           error: error.message,
         });
 
@@ -371,7 +395,11 @@ async function sendMessage(req, res) {
       ...(sendMeta.messageId ? { messageId: sendMeta.messageId } : {}),
     });
   } catch (error) {
-    console.error(logPrefix, "WhatsApp send failed:", error.message);
+    messageLogger.error("whatsapp_send_failed", {
+      logPrefix,
+      message: error.message,
+      code: error.code || null,
+    });
 
     return res.status(error.statusCode || 500).json({
       success: false,
@@ -408,7 +436,11 @@ async function testWhatsApp(req, res) {
   };
 
   const logPrefix = `[test-whatsapp][id=${payload.id}]`;
-  console.log(logPrefix, "Incoming request body:", incomingBody);
+  messageLogger.info("test_whatsapp_request", {
+    logPrefix,
+    groupId: payload.groupId,
+    hasImageUrl: Boolean(payload.imageUrl),
+  });
 
   if (!payload.groupId) {
     return res.status(400).json({
@@ -455,7 +487,11 @@ async function testWhatsApp(req, res) {
       },
     });
   } catch (error) {
-    console.error(logPrefix, "WhatsApp test send failed:", error.message);
+    messageLogger.error("test_whatsapp_failed", {
+      logPrefix,
+      message: error.message,
+      code: error.code || null,
+    });
     return res.status(error.statusCode || 500).json({
       success: false,
       ...incomingBody,

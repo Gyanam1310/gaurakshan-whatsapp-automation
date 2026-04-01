@@ -9,6 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const pino = require("pino");
 const qrcode = require("qrcode-terminal");
+const { logger } = require("./logger");
 
 let socket = null;
 let connectPromise = null;
@@ -20,6 +21,9 @@ const CONNECT_READY_TIMEOUT_MS = Number.parseInt(process.env.WHATSAPP_CONNECT_TI
 const MAX_RECONNECT_ATTEMPTS = Number.parseInt(process.env.WHATSAPP_MAX_RECONNECT_ATTEMPTS, 10) || 12;
 const RECONNECT_BASE_DELAY_MS = Number.parseInt(process.env.WHATSAPP_RECONNECT_BASE_DELAY_MS, 10) || 2000;
 const RECONNECT_MAX_DELAY_MS = Number.parseInt(process.env.WHATSAPP_RECONNECT_MAX_DELAY_MS, 10) || 60000;
+const RECONNECT_JITTER_RATIO = Number.parseFloat(process.env.WHATSAPP_RECONNECT_JITTER_RATIO || "0.2");
+
+const whatsappLogger = logger.child({ component: "whatsapp" });
 
 const connectionState = {
   connected: false,
@@ -32,26 +36,12 @@ const connectionState = {
 };
 
 function log(level, event, details = {}) {
-  const payload = {
-    timestamp: new Date().toISOString(),
+  whatsappLogger.log({
     level,
-    component: "whatsapp",
+    message: event,
     event,
     ...details,
-  };
-
-  const line = JSON.stringify(payload);
-  if (level === "error") {
-    console.error(line);
-    return;
-  }
-
-  if (level === "warn") {
-    console.warn(line);
-    return;
-  }
-
-  console.log(line);
+  });
 }
 
 function updateConnectionState(update = {}) {
@@ -128,7 +118,13 @@ function getConnectionState() {
 function calculateReconnectDelay(attempt) {
   const cappedAttempt = Math.max(0, attempt - 1);
   const baseDelay = RECONNECT_BASE_DELAY_MS * (2 ** cappedAttempt);
-  return Math.min(baseDelay, RECONNECT_MAX_DELAY_MS);
+  const boundedDelay = Math.min(baseDelay, RECONNECT_MAX_DELAY_MS);
+  const jitterRatio = Number.isFinite(RECONNECT_JITTER_RATIO)
+    ? Math.max(0, Math.min(RECONNECT_JITTER_RATIO, 0.8))
+    : 0;
+  const jitterRange = boundedDelay * jitterRatio;
+  const jitteredDelay = boundedDelay + ((Math.random() * 2 * jitterRange) - jitterRange);
+  return Math.max(250, Math.round(jitteredDelay));
 }
 
 function scheduleReconnect() {

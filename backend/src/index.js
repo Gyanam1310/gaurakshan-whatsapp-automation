@@ -5,6 +5,7 @@ const path = require("path");
 const messageRoutes = require("./routes/messageRoutes");
 const imageRoutes = require("./routes/imageRoutes");
 const { initializeWhatsApp } = require("./services/whatsappService");
+const { logger } = require("./config/logger");
 
 const app = express();
 
@@ -20,14 +21,19 @@ app.use(imageRoutes);
 
 initializeWhatsApp()
 	.then(() => {
-		console.log("[startup] WhatsApp initialization requested");
+		logger.info("whatsapp_initialization_requested");
 	})
 	.catch((error) => {
-		console.error("[startup] WhatsApp initialization failed:", error.message);
+		logger.error("whatsapp_initialization_failed", {
+			message: error.message,
+			code: error.code || null,
+		});
 	});
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-	console.log(`🚀 Server running on port ${PORT}`);
+	logger.info("server_started", {
+		port: Number(PORT),
+	});
 });

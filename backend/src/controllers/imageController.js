@@ -1,5 +1,8 @@
 const path = require("path");
 const { google } = require("googleapis");
+const { logger } = require("../config/logger");
+
+const imageLogger = logger.child({ component: "image-controller" });
 
 const familyImages = [
   {
@@ -48,12 +51,14 @@ function getImages(req, res) {
 }
 
 async function getFolders(req, res) {
-  console.log("[GET /get-folders] Request started");
+  imageLogger.info("get_folders_request_started");
 
   const keyFileFromEnv = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   const parentFolderId = process.env.DRIVE_FOLDER_ID;
 
-  console.log("[GET /get-folders] DRIVE_FOLDER_ID:", parentFolderId || "<missing>");
+  imageLogger.info("get_folders_parent_folder", {
+    parentFolderId: parentFolderId || "<missing>",
+  });
 
   if (!keyFileFromEnv) {
     return res.status(500).json({
@@ -98,7 +103,9 @@ async function getFolders(req, res) {
           corpora: "allDrives",
         });
 
-        console.log("[GET /get-folders] Drive API raw response:", JSON.stringify(response.data, null, 2));
+        imageLogger.debug("get_folders_drive_raw_response", {
+          response: response.data,
+        });
 
         const files = Array.isArray(response.data?.files) ? response.data.files : [];
         allFiles.push(...files);
@@ -127,7 +134,7 @@ async function getFolders(req, res) {
     );
 
     if (folders.length === 0) {
-      console.log("[GET /get-folders] No folders found with parent filter. Running fallback visibility query.");
+      imageLogger.warn("get_folders_empty_parent_query_running_fallback");
       const fallbackFiles = await listAllFolders(fallbackQuery);
       const fallbackMapped = fallbackFiles
         .map((file) => ({
@@ -138,16 +145,21 @@ async function getFolders(req, res) {
         }))
         .filter((folder) => folder.id && folder.name);
 
-      console.log("[GET /get-folders] Fallback mapped folders:", fallbackMapped);
+      imageLogger.info("get_folders_fallback_result", {
+        count: fallbackMapped.length,
+      });
     }
 
-    console.log("[GET /get-folders] Final mapped response:", folders);
+    imageLogger.info("get_folders_success", {
+      count: folders.length,
+    });
     return res.json(folders);
   } catch (error) {
-    console.error("[GET /get-folders] Failed to fetch folders");
-    console.error("[GET /get-folders] Error message:", error.message);
-    console.error("[GET /get-folders] Error status:", error.response?.status || "<none>");
-    console.error("[GET /get-folders] Error details:", error.response?.data || error.stack || error);
+    imageLogger.error("get_folders_failed", {
+      message: error.message,
+      status: error.response?.status || null,
+      details: error.response?.data || error.stack || null,
+    });
 
     return res.status(500).json({
       success: false,
