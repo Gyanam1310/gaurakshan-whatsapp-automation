@@ -1,9 +1,9 @@
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-} = require("@whiskeysockets/baileys");
+let makeWASocket = null;
+let useMultiFileAuthState = null;
+let fetchLatestBaileysVersion = null;
+const FALLBACK_DISCONNECT_REASON = Object.freeze({ loggedOut: 401 });
+let DisconnectReason = FALLBACK_DISCONNECT_REASON;
+let baileysImportPromise = null;
 
 const fs = require("fs");
 const path = require("path");
@@ -24,6 +24,39 @@ const RECONNECT_MAX_DELAY_MS = Number.parseInt(process.env.WHATSAPP_RECONNECT_MA
 const RECONNECT_JITTER_RATIO = Number.parseFloat(process.env.WHATSAPP_RECONNECT_JITTER_RATIO || "0.2");
 
 const whatsappLogger = logger.child({ component: "whatsapp" });
+
+async function loadBaileys() {
+  if (makeWASocket && useMultiFileAuthState && fetchLatestBaileysVersion) {
+    return;
+  }
+
+  if (baileysImportPromise) {
+    return baileysImportPromise;
+  }
+
+  // Baileys v7+ is ESM-only, so CommonJS code must import it dynamically.
+  baileysImportPromise = import("@whiskeysockets/baileys")
+    .then((baileysModule) => {
+      makeWASocket = baileysModule.default;
+      useMultiFileAuthState = baileysModule.useMultiFileAuthState;
+      fetchLatestBaileysVersion = baileysModule.fetchLatestBaileysVersion;
+      DisconnectReason = baileysModule.DisconnectReason || FALLBACK_DISCONNECT_REASON;
+
+      if (
+        typeof makeWASocket !== "function"
+        || typeof useMultiFileAuthState !== "function"
+        || typeof fetchLatestBaileysVersion !== "function"
+      ) {
+        throw new Error("Invalid Baileys module exports");
+      }
+    })
+    .catch((error) => {
+      baileysImportPromise = null;
+      throw error;
+    });
+
+  return baileysImportPromise;
+}
 
 const connectionState = {
   connected: false,
@@ -79,10 +112,12 @@ function clearReconnectTimer() {
   reconnectTimer = null;
 }
 
-function ensureAuthState() {
+async function ensureAuthState() {
   if (authStatePromise) {
     return authStatePromise;
   }
+
+  await loadBaileys();
 
   const sessionDir = getSessionDir();
   fs.mkdirSync(sessionDir, { recursive: true });
@@ -275,6 +310,8 @@ function bindSocketEvents(targetSocket) {
 }
 
 async function createSocket() {
+  await loadBaileys();
+
   const { state, saveCreds } = await ensureAuthState();
   const { version } = await fetchLatestBaileysVersion();
 

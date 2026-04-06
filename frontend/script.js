@@ -45,8 +45,10 @@ const driveFamiliesById = new Map();
 const DRIVE_API_KEY = "AIzaSyCLFwdGAGueaB2G4t6oDoDK3Bwu_QL-8LY";
 const DRIVE_PARENT_FOLDER_ID = "1CXzAcpfArGp5Yp-zXvqrVAx9ZfwIaqiur7e6eG1GRhUXj3qInovdLxYtz00s8uImh0Bs5d3p";
 const DRIVE_FILES_API_BASE_URL = "https://www.googleapis.com/drive/v3/files";
+const DRIVE_THUMBNAIL_BASE_URL = "https://drive.google.com/thumbnail";
 const API_BASE = window.__API_BASE__ || "/api";
 const FOLDERS_API_URL = `${API_BASE}/get-folders`;
+const IMAGE_FALLBACK_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 480 320'%3E%3Crect width='480' height='320' fill='%23e7edf5'/%3E%3Cg fill='none' stroke='%2391a3b8' stroke-width='14' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M56 240 168 136l84 76 52-48 120 76'/%3E%3Ccircle cx='164' cy='96' r='32'/%3E%3C/g%3E%3C/svg%3E";
 
 const familyNameHindiMap = {
   "Sharma Family": "शर्मा परिवार",
@@ -462,10 +464,52 @@ function getDriveImagesApiUrl(folderId) {
   return `${DRIVE_FILES_API_BASE_URL}?${params.toString()}`;
 }
 
+function extractDriveFileId(value) {
+  const source = String(value || "").trim();
+  if (!source) {
+    return "";
+  }
+
+  // Already a Drive file id.
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(source)) {
+    return source;
+  }
+
+  try {
+    const parsed = new URL(source);
+    const idFromQuery = parsed.searchParams.get("id");
+    if (idFromQuery) {
+      return idFromQuery;
+    }
+
+    const pathMatch = parsed.pathname.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (pathMatch?.[1]) {
+      return pathMatch[1];
+    }
+  } catch {
+    // Ignore parse errors and return empty string below.
+  }
+
+  return "";
+}
+
 function getDriveImageUrls(fileId) {
+  const normalizedFileId = extractDriveFileId(fileId);
+
+  if (!normalizedFileId) {
+    return {
+      fileId: "",
+      primaryUrl: "",
+      secondaryUrl: "",
+    };
+  }
+
+  const encodedFileId = encodeURIComponent(normalizedFileId);
+
   return {
-    thumbnailUrl: `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`,
-    directUrl: `https://drive.google.com/uc?id=${fileId}`,
+    fileId: normalizedFileId,
+    primaryUrl: `${DRIVE_THUMBNAIL_BASE_URL}?id=${encodedFileId}&sz=w1000`,
+    secondaryUrl: `${DRIVE_THUMBNAIL_BASE_URL}?id=${encodedFileId}&sz=w500`,
   };
 }
 
@@ -485,7 +529,7 @@ function logImageGridDiagnostics() {
   const firstImgComputed = firstImg ? window.getComputedStyle(firstImg) : null;
 
   console.log("[imageGrid] diagnostics", {
-    itemCount: imageGrid.querySelectorAll(".image-item").length,
+    itemCount: imageGrid.querySelectorAll(".image-card").length,
     imgCount: imageGrid.querySelectorAll("img").length,
     grid: {
       display: gridComputed.display,
@@ -517,12 +561,27 @@ function logImageGridDiagnostics() {
   });
 }
 
+function renderImageSkeletons(count = 6) {
+  const safeCount = Math.max(2, Math.min(12, Number(count) || 6));
+  imageGrid.replaceChildren();
+
+  const fragment = document.createDocumentFragment();
+  for (let index = 0; index < safeCount; index += 1) {
+    const skeleton = document.createElement("div");
+    skeleton.className = "image-item-skeleton";
+    skeleton.setAttribute("aria-hidden", "true");
+    fragment.appendChild(skeleton);
+  }
+
+  imageGrid.appendChild(fragment);
+}
+
 async function loadImages(folderId) {
   const requestId = ++activeImageLoadRequestId;
   console.log("[images] loadImages called", { folderId, requestId });
 
   selectedDriveImageUrl = "";
-  imageGrid.innerHTML = "";
+  imageGrid.replaceChildren();
 
   if (!folderId) {
     console.log("[images] No folder selected, clearing image grid");
@@ -531,7 +590,7 @@ async function loadImages(folderId) {
   }
 
   console.log("[images] Before loading, grid children:", imageGrid.children.length);
-  imageGrid.innerHTML = "<p>Loading images...</p>";
+  renderImageSkeletons(6);
 
   try {
     const driveApiUrl = getDriveImagesApiUrl(folderId);
@@ -553,14 +612,17 @@ async function loadImages(folderId) {
     const images = files
       .filter((file) => file?.id)
       .map((file) => {
+        const fileId = extractDriveFileId(file.id);
+        console.log("Rendering image:", fileId);
         const urls = getDriveImageUrls(file.id);
         return {
           id: file.id,
-          name: file.name || "Unnamed image",
-          url: urls.thumbnailUrl,
-          fallbackUrl: urls.directUrl,
+          fileId: urls.fileId,
+          url: urls.primaryUrl,
+          fallbackUrl: urls.secondaryUrl,
         };
-      });
+      })
+      .filter((image) => image.url);
 
     console.log("[images] mapped images:", images);
 
@@ -580,7 +642,8 @@ async function loadImages(folderId) {
       return;
     }
 
-    imageGrid.innerHTML = "<p>Failed to load images. Please try again.</p>";
+    imageGrid.replaceChildren();
+    showStatus("Failed to load images. Please try again.", "error");
     console.error("Failed to load images from Google Drive:", error);
     logImageGridDiagnostics();
   }
@@ -589,72 +652,73 @@ async function loadImages(folderId) {
 function renderImages(images) {
   console.log("[renderImages] start", {
     incomingCount: images.length,
-    existingItems: imageGrid.querySelectorAll(".image-item").length,
+    existingItems: imageGrid.querySelectorAll(".image-card").length,
   });
 
-  imageGrid.innerHTML = "";
+  imageGrid.replaceChildren();
 
   if (images.length === 0) {
-    imageGrid.innerHTML = "<p>No images found for this folder</p>";
+    showStatus("No images found for this family folder.", "error");
     console.log("[renderImages] No images found for selected folder");
     applyImageSelection();
     return;
   }
 
+  showStatus("", "");
+
   const fragment = document.createDocumentFragment();
 
   images.forEach((image) => {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "image-item";
+    const item = document.createElement("div");
+    item.className = "image-card";
 
     const img = document.createElement("img");
     img.src = image.url;
-    img.alt = image.name;
+    img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.referrerPolicy = "no-referrer";
     img.dataset.loadedUrl = image.url;
     img.dataset.fallbackUrl = image.fallbackUrl;
-    img.dataset.fallbackTried = "false";
+    img.dataset.fallbackTried = "0";
 
     img.addEventListener("load", () => {
       img.dataset.loadedUrl = img.currentSrc || img.src;
       console.log("[renderImages] image loaded", {
         id: image.id,
-        name: image.name,
         src: img.dataset.loadedUrl,
       });
     });
 
     img.addEventListener("error", () => {
-      if (img.dataset.fallbackTried !== "true") {
-        img.dataset.fallbackTried = "true";
+      if (img.dataset.fallbackTried === "0" && image.fallbackUrl) {
+        img.dataset.fallbackTried = "1";
         img.src = image.fallbackUrl;
         img.dataset.loadedUrl = image.fallbackUrl;
-        console.warn("[renderImages] thumbnail failed; switched to direct URL", {
+        console.warn("[renderImages] thumbnail w1000 failed; switched to w500", {
           id: image.id,
-          name: image.name,
+          fileId: image.fileId || null,
           fallbackUrl: image.fallbackUrl,
         });
         return;
       }
 
-      console.error("[renderImages] image failed on both thumbnail and direct URL", {
+      img.src = IMAGE_FALLBACK_PLACEHOLDER;
+      img.dataset.loadedUrl = image.fallbackUrl || image.url;
+      item.classList.add("fallback");
+      console.error("[renderImages] image failed on thumbnail w1000 and w500", {
         id: image.id,
-        name: image.name,
-        thumbnailUrl: image.url,
-        directUrl: image.fallbackUrl,
-        hint: "Check Google Drive sharing: Anyone with the link -> Viewer",
+        fileId: image.fileId || null,
+        primaryUrl: image.url,
+        fallbackUrl: image.fallbackUrl,
+        hint: "Check Google Drive sharing visibility and file availability",
       });
     });
 
-    const caption = document.createElement("div");
-    caption.className = "image-name";
-    caption.textContent = image.name;
-
-    item.appendChild(img);
-    item.appendChild(caption);
+    item.replaceChildren(img);
 
     item.addEventListener("click", () => {
-      document.querySelectorAll(".image-item").forEach((el) => {
+      document.querySelectorAll(".image-card").forEach((el) => {
         el.classList.remove("selected");
       });
 
@@ -662,7 +726,6 @@ function renderImages(images) {
       selectedDriveImageUrl = img.dataset.loadedUrl || image.url;
       console.log("[renderImages] image selected", {
         id: image.id,
-        name: image.name,
         selectedDriveImageUrl,
       });
       applyImageSelection();
@@ -674,7 +737,7 @@ function renderImages(images) {
   console.log("[renderImages] appending fragment to imageGrid");
   imageGrid.appendChild(fragment);
   console.log("[renderImages] after append", {
-    itemCount: imageGrid.querySelectorAll(".image-item").length,
+    itemCount: imageGrid.querySelectorAll(".image-card").length,
     imgCount: imageGrid.querySelectorAll("img").length,
   });
   applyImageSelection();
@@ -692,7 +755,7 @@ function handleUploadImageChange(event) {
   const reader = new FileReader();
   reader.onload = () => {
     uploadedImageUrl = typeof reader.result === "string" ? reader.result : "";
-    document.querySelectorAll(".image-item").forEach((item) => {
+    document.querySelectorAll(".image-card").forEach((item) => {
       item.classList.remove("selected");
     });
     applyImageSelection();
@@ -811,7 +874,7 @@ messageForm.addEventListener("submit", async (event) => {
     uploadedImageUrl = "";
     selectedImageUrl = "";
     uploadImageInput.value = "";
-    document.querySelectorAll(".image-item").forEach((item) => {
+    document.querySelectorAll(".image-card").forEach((item) => {
       item.classList.remove("selected");
     });
 
