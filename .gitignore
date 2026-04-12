@@ -1,0 +1,41 @@
+service-account.json
+# Dependencies
+node_modules/
+backend/node_modules/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Sessions / temp
+session/
+auth/
+tmp_uploads/
+tmp-uploads/
+
+# Logs
+logs/
+backend/logs/
+*.log
+
+# n8n (just in case)
+.n8n/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.temp
+
+# Docker (optional)
+docker-data/
+
+auth_info/
+auth_backup/
+*.json
+!package.json
+!package-lock.json
+!service-account.json

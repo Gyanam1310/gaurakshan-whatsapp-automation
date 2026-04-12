@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Donation Sender</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-container">
+    <header class="app-header">
+      <p class="eyebrow">WhatsApp Automation</p>
+      <h1>Send Donation Message</h1>
+      <p>Select family, choose an image, and send message</p>
+      <p class="hint">Please enter details in Hindi</p>
+    </header>
+
+    <section class="card">
+      <div class="section-head">
+        <span class="step-chip">Step 1</span>
+        <h2>Select Family</h2>
+      </div>
+      <label for="familySelect">Family</label>
+      <select id="familySelect" class="input-lg">
+        <option value="">Select family...</option>
+      </select>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <span class="step-chip">Step 2</span>
+        <h2>Select Image</h2>
+      </div>
+      <p class="hint">Click one image to select</p>
+      <div id="imageGrid" class="image-grid"></div>
+      <label class="upload-row">
+        <span>Or upload from device (overrides Drive selection)</span>
+        <input type="file" id="uploadImageInput" class="input-lg" accept="image/*">
+      </label>
+      <div id="selectedImagePreviewContainer" class="selected-preview">
+        <p class="hint preview-hint">Selected Image</p>
+        <h3>Selected Image Preview</h3>
+        <img
+          id="selectedImagePreview"
+          alt="Selected image preview"
+        >
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <span class="step-chip">Step 3</span>
+        <h2>Donor Details</h2>
+      </div>
+      <form id="messageForm">
+        <div class="form-grid">
+          <label>
+            Post Type
+            <select id="postType" class="input-lg">
+              <option value="Birthday">Birthday</option>
+              <option value="Anniversary">Anniversary</option>
+              <option value="Punyatithi">Punyatithi</option>
+              <option value="General Donation">General Donation</option>
+              <option value="Other Occasion">Other Occasion</option>
+              <option value="Custom Template">Custom Template</option>
+            </select>
+          </label>
+
+          <label>
+            Donation Type
+            <select id="donationType" class="input-lg" required>
+              <option value="">Select donation type...</option>
+              <option value="एक समय का चारा">एक समय का चारा</option>
+              <option value="पूरे दिन का चारा">पूरे दिन का चारा</option>
+              <option value="2 दिन का चारा">2 दिन का चारा</option>
+            </select>
+          </label>
+
+          <label>
+            Donation Date
+            <input type="date" id="donationDate" class="input-lg" required>
+          </label>
+
+          <label id="mainPersonNameGroup">
+            Main Person Name
+            <input type="text" id="mainPersonName" class="input-lg" placeholder="e.g., स्व. माताजी ___ जी">
+          </label>
+
+          <label id="occasionTextGroup" style="display: none;">
+            Occasion
+            <input type="text" id="occasionText" class="input-lg" placeholder="e.g., गुड़ी पड़वा, दीपावली">
+          </label>
+
+          <label id="countGroup">
+            Count (optional)
+            <input type="text" id="countText" class="input-lg" placeholder="e.g., 5वीं पुण्यतिथि">
+          </label>
+
+          <div id="donorsSection" class="donors-section">
+            <div class="donors-header-row">
+              <h3>Donors</h3>
+              <button type="button" id="addDonorBtn" class="btn-secondary">Add Donor</button>
+            </div>
+            <div id="donorsContainer" class="donors-container"></div>
+          </div>
+
+          <label>
+            Family Name
+            <input type="text" id="familyName" class="input-lg" placeholder="Enter family name (in Hindi)" required>
+          </label>
+
+          <label>
+            Location
+            <input type="text" id="location" class="input-lg" placeholder="Enter location (in Hindi)">
+          </label>
+
+          <label>
+            Custom Message
+            <textarea id="customMessage" class="input-lg" rows="4" placeholder="Enter custom message (in Hindi)"></textarea>
+          </label>
+
+          <label id="fullMessageGroup" style="display: none;">
+            Full Message Template
+            <textarea id="fullMessage" class="input-lg" rows="6" placeholder="Enter full WhatsApp message"></textarea>
+          </label>
+        </div>
+
+        <section class="preview-box">
+          <h3>WhatsApp Preview</h3>
+          <pre id="messagePreview">Preview will appear here...</pre>
+        </section>
+
+        <button type="submit" id="submitBtn" class="btn-primary">Send to WhatsApp</button>
+      </form>
+    </section>
+
+    <section id="status" class="status" aria-live="polite"></section>
+  </main>
+
+  <script src="messageBuilder.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
