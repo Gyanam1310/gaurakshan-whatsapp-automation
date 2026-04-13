@@ -16,7 +16,7 @@ let connectPromise = null;
 let authStatePromise = null;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
-let isInitialized = false;
+let isInitializing = false;
 const GLOBAL_INIT_STATE_KEY = "__whatsapp_init_state__";
 
 const globalInitState = globalThis[GLOBAL_INIT_STATE_KEY] || {
@@ -27,10 +27,7 @@ const globalInitState = globalThis[GLOBAL_INIT_STATE_KEY] || {
 globalThis[GLOBAL_INIT_STATE_KEY] = globalInitState;
 
 const CONNECT_READY_TIMEOUT_MS = Number.parseInt(process.env.WHATSAPP_CONNECT_TIMEOUT_MS, 10) || 45000;
-const MAX_RECONNECT_ATTEMPTS = Number.parseInt(process.env.WHATSAPP_MAX_RECONNECT_ATTEMPTS, 10) || 12;
-const RECONNECT_BASE_DELAY_MS = Number.parseInt(process.env.WHATSAPP_RECONNECT_BASE_DELAY_MS, 10) || 2000;
-const RECONNECT_MAX_DELAY_MS = Number.parseInt(process.env.WHATSAPP_RECONNECT_MAX_DELAY_MS, 10) || 60000;
-const RECONNECT_JITTER_RATIO = Number.parseFloat(process.env.WHATSAPP_RECONNECT_JITTER_RATIO || "0.2");
+const RECONNECT_DELAY_MS = Number.parseInt(process.env.WHATSAPP_RECONNECT_DELAY_MS, 10) || 5000;
 
 const whatsappLogger = logger.child({ component: "whatsapp" });
 
@@ -68,6 +65,7 @@ async function loadBaileys() {
 }
 
 const connectionState = {
+  isConnected: false,
   connected: false,
   status: "not_initialized",
   jid: null,
@@ -86,11 +84,19 @@ function log(level, event, details = {}) {
   });
 }
 
+function getDisconnectStatusCode(lastDisconnect) {
+  return lastDisconnect?.error?.output?.statusCode
+    || lastDisconnect?.error?.output?.payload?.statusCode
+    || lastDisconnect?.error?.data?.statusCode
+    || null;
+}
+
 function updateConnectionState(update = {}) {
   const nextConnection = typeof update.connection === "string" ? update.connection : null;
 
   if (nextConnection) {
     connectionState.status = nextConnection;
+    connectionState.isConnected = nextConnection === "open";
     connectionState.connected = nextConnection === "open";
   }
 
@@ -98,7 +104,7 @@ function updateConnectionState(update = {}) {
     connectionState.jid = socket.user.id;
   }
 
-  const statusCode = update?.lastDisconnect?.error?.output?.statusCode;
+  const statusCode = getDisconnectStatusCode(update?.lastDisconnect);
   if (statusCode) {
     connectionState.lastDisconnectCode = statusCode;
     connectionState.lastDisconnectReason = update?.lastDisconnect?.error?.message || null;
@@ -139,7 +145,7 @@ async function ensureAuthState() {
 }
 
 function isSocketConnected() {
-  return Boolean(socket) && connectionState.connected;
+  return Boolean(socket) && connectionState.isConnected;
 }
 
 function getSocket() {
@@ -148,6 +154,7 @@ function getSocket() {
 
 function getConnectionState() {
   return {
+    isConnected: connectionState.isConnected,
     connected: connectionState.connected,
     status: connectionState.status,
     jid: connectionState.jid,
@@ -159,37 +166,16 @@ function getConnectionState() {
   };
 }
 
-function calculateReconnectDelay(attempt) {
-  const cappedAttempt = Math.max(0, attempt - 1);
-  const baseDelay = RECONNECT_BASE_DELAY_MS * (2 ** cappedAttempt);
-  const boundedDelay = Math.min(baseDelay, RECONNECT_MAX_DELAY_MS);
-  const jitterRatio = Number.isFinite(RECONNECT_JITTER_RATIO)
-    ? Math.max(0, Math.min(RECONNECT_JITTER_RATIO, 0.8))
-    : 0;
-  const jitterRange = boundedDelay * jitterRatio;
-  const jitteredDelay = boundedDelay + ((Math.random() * 2 * jitterRange) - jitterRange);
-  return Math.max(250, Math.round(jitteredDelay));
-}
-
 function scheduleReconnect() {
   if (reconnectTimer || connectPromise || connectionState.loggedOut) {
     return;
   }
 
-  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    log("error", "reconnect_limit_reached", {
-      attempts: reconnectAttempts,
-      maxAttempts: MAX_RECONNECT_ATTEMPTS,
-    });
-    return;
-  }
-
   reconnectAttempts += 1;
-  const delayMs = calculateReconnectDelay(reconnectAttempts);
 
-  log("warn", "reconnect_scheduled", {
+  log("warn", "Reconnecting...", {
     attempt: reconnectAttempts,
-    delayMs,
+    delayMs: RECONNECT_DELAY_MS,
   });
 
   reconnectTimer = setTimeout(() => {
@@ -202,7 +188,7 @@ function scheduleReconnect() {
       });
       scheduleReconnect();
     });
-  }, delayMs);
+  }, RECONNECT_DELAY_MS);
 }
 
 function waitForSocketReady(targetSocket, timeoutMs) {
@@ -243,7 +229,7 @@ function waitForSocketReady(targetSocket, timeoutMs) {
       }
 
       if (update?.connection === "close") {
-        const statusCode = update?.lastDisconnect?.error?.output?.statusCode;
+        const statusCode = getDisconnectStatusCode(update?.lastDisconnect);
         if (statusCode === DisconnectReason.loggedOut) {
           settled = true;
           cleanup();
@@ -277,7 +263,7 @@ function bindSocketEvents(targetSocket) {
     if (connection === "open") {
       reconnectAttempts = 0;
       clearReconnectTimer();
-      log("info", "connected", {
+      log("info", "WhatsApp Connected", {
         jid: targetSocket?.user?.id || null,
       });
       return;
@@ -292,7 +278,7 @@ function bindSocketEvents(targetSocket) {
       return;
     }
 
-    const statusCode = lastDisconnect?.error?.output?.statusCode || null;
+    const statusCode = getDisconnectStatusCode(lastDisconnect);
     const reason = lastDisconnect?.error?.message || "connection closed";
 
     log("warn", "disconnected", {
@@ -301,6 +287,7 @@ function bindSocketEvents(targetSocket) {
     });
 
     socket = null;
+    connectionState.isConnected = false;
     connectionState.connected = false;
     connectionState.status = "close";
     connectionState.updatedAt = new Date().toISOString();
@@ -308,7 +295,7 @@ function bindSocketEvents(targetSocket) {
     if (statusCode === DisconnectReason.loggedOut) {
       connectionState.loggedOut = true;
       clearReconnectTimer();
-      log("warn", "logged_out_qr_required", {
+      log("warn", "QR required", {
         statusCode,
       });
       return;
@@ -372,22 +359,25 @@ async function connectWhatsApp() {
 }
 
 function initializeWhatsAppOnce() {
-  if (isInitialized || globalInitState.initialized) {
-    log("info", "WhatsApp already initialized, skipping...");
-    return connectPromise || Promise.resolve(socket);
+  if (isSocketConnected()) {
+    return Promise.resolve(socket);
   }
 
-  if (globalInitState.initializationPromise) {
-    log("info", "WhatsApp already initialized, skipping...");
-    return globalInitState.initializationPromise;
+  if (isInitializing || globalInitState.initializationPromise) {
+    log("info", "whatsapp_initialization_in_progress");
+    return globalInitState.initializationPromise || connectPromise;
   }
 
-  log("info", "Initializing WhatsApp for the first time...");
-  isInitialized = true;
-  globalInitState.initialized = true;
+  isInitializing = true;
+  log("info", "whatsapp_initialization_started");
 
   globalInitState.initializationPromise = connectWhatsApp()
+    .then((connectedSocket) => {
+      globalInitState.initialized = true;
+      return connectedSocket;
+    })
     .finally(() => {
+      isInitializing = false;
       globalInitState.initializationPromise = null;
     });
 

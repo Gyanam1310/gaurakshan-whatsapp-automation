@@ -1,5 +1,6 @@
 const {
   initializeWhatsAppOnce,
+  connectWhatsApp,
   getSocket,
   getConnectionState,
   isSocketConnected,
@@ -8,10 +9,10 @@ const { logger } = require("../config/logger");
 const { retryWithBackoff } = require("../utils/retry");
 
 const SEND_TIMEOUT_MS = Number.parseInt(process.env.WHATSAPP_SEND_TIMEOUT_MS, 10) || 25000;
-const SEND_RETRY_ATTEMPTS = Number.parseInt(process.env.WHATSAPP_SEND_RETRY_ATTEMPTS, 10) || 2;
-const SEND_RETRY_BASE_DELAY_MS = Number.parseInt(process.env.WHATSAPP_SEND_RETRY_BASE_DELAY_MS, 10) || 1500;
-const SEND_RETRY_MAX_DELAY_MS = Number.parseInt(process.env.WHATSAPP_SEND_RETRY_MAX_DELAY_MS, 10) || 8000;
-const SEND_RETRY_JITTER_RATIO = Number.parseFloat(process.env.WHATSAPP_SEND_RETRY_JITTER_RATIO || "0.2");
+const SEND_MAX_RETRIES = Number.parseInt(process.env.WHATSAPP_SEND_MAX_RETRIES, 10) || 2;
+const SEND_RETRY_BASE_DELAY_MS = Number.parseInt(process.env.WHATSAPP_SEND_RETRY_BASE_DELAY_MS, 10) || 1000;
+const SEND_RETRY_MAX_DELAY_MS = Number.parseInt(process.env.WHATSAPP_SEND_RETRY_MAX_DELAY_MS, 10) || 2000;
+const SEND_RETRY_JITTER_RATIO = Number.parseFloat(process.env.WHATSAPP_SEND_RETRY_JITTER_RATIO || "0");
 
 const whatsappServiceLogger = logger.child({ component: "whatsapp-service" });
 
@@ -81,7 +82,7 @@ async function runWithRetry(task, options = {}) {
     jitterRatio: Number.isFinite(options.jitterRatio) ? options.jitterRatio : SEND_RETRY_JITTER_RATIO,
     shouldRetry: (error) => isRetryableSendError(error),
     onRetry: ({ attempt, nextAttempt, delayMs, error }) => {
-      whatsappServiceLogger.warn("send_retry_scheduled", {
+      whatsappServiceLogger.warn("Retrying...", {
         attempt,
         nextAttempt,
         delayMs,
@@ -118,6 +119,19 @@ async function ensureWhatsAppConnected() {
   let socket = getSocket();
 
   if (!socket || !isSocketConnected()) {
+    whatsappServiceLogger.warn("Reconnecting...");
+
+    try {
+      await connectWhatsApp();
+    } catch (error) {
+      whatsappServiceLogger.error("Send failed", {
+        stage: "reconnect",
+        message: error.message,
+        code: error.code || null,
+      });
+    }
+
+    // Keep existing startup behavior unchanged.
     await initializeWhatsAppOnce();
   }
 
@@ -226,16 +240,25 @@ async function sendMessageToWhatsApp({ groupId, message, imageUrl }) {
   try {
     const result = await runWithRetry(
       async (attempt) => {
-        socket = await ensureWhatsAppConnected();
+        try {
+          socket = await ensureWhatsAppConnected();
 
-        return withTimeout(
-          socket.sendMessage(normalizedGroupId, payload),
-          SEND_TIMEOUT_MS,
-          `Timed out while sending WhatsApp message (attempt ${attempt})`
-        );
+          return withTimeout(
+            socket.sendMessage(normalizedGroupId, payload),
+            SEND_TIMEOUT_MS,
+            `Timed out while sending WhatsApp message (attempt ${attempt})`
+          );
+        } catch (error) {
+          whatsappServiceLogger.error("Send failed", {
+            attempt,
+            message: error.message,
+            code: error.code || null,
+          });
+          throw error;
+        }
       },
       {
-        attempts: SEND_RETRY_ATTEMPTS,
+        attempts: SEND_MAX_RETRIES + 1,
         baseDelayMs: SEND_RETRY_BASE_DELAY_MS,
         maxDelayMs: SEND_RETRY_MAX_DELAY_MS,
         jitterRatio: SEND_RETRY_JITTER_RATIO,
@@ -259,6 +282,12 @@ async function sendMessageToWhatsApp({ groupId, message, imageUrl }) {
   } catch (error) {
     const details = extractErrorDetails(error);
     const lowered = String(error?.message || "").toLowerCase();
+
+    whatsappServiceLogger.error("Final failure", {
+      groupId: normalizedGroupId,
+      message: error.message,
+      code: error.code || null,
+    });
 
     if (lowered.includes("rate")) {
       throw createError("WhatsApp rate limited the request", 429, "RATE_LIMITED", details);
